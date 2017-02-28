@@ -29,6 +29,7 @@ import tensorflow as tf
 
 from inception import image_processing
 from inception import inception_model as inception
+from inception.slim import slim
 
 
 FLAGS = tf.app.flags.FLAGS
@@ -52,7 +53,7 @@ tf.app.flags.DEFINE_string('subset', 'validation',
                            """Either 'validation' or 'train'.""")
 
 
-def _eval_once(saver, summary_writer, top_1_op, top_5_op, summary_op):
+def _eval_once(saver, summary_writer, top_1_op, top_5_op, summary_op, loss_op):
   """Runs Eval once.
 
   Args:
@@ -101,18 +102,20 @@ def _eval_once(saver, summary_writer, top_1_op, top_5_op, summary_op):
       print('%s: starting evaluation on (%s).' % (datetime.now(), FLAGS.subset))
       start_time = time.time()
       while step < num_iter and not coord.should_stop():
+        loss = sess.run(loss_op)
         top_1, top_5 = sess.run([top_1_op, top_5_op])
         count_top_1 += np.sum(top_1)
         count_top_5 += np.sum(top_5)
         step += 1
-        if step % 20 == 0:
-          duration = time.time() - start_time
-          sec_per_batch = duration / 20.0
-          examples_per_sec = FLAGS.batch_size / sec_per_batch
-          print('%s: [%d batches out of %d] (%.1f examples/sec; %.3f'
-                'sec/batch)' % (datetime.now(), step, num_iter,
-                                examples_per_sec, sec_per_batch))
-          start_time = time.time()
+
+        #if step % 20 == 0:
+        duration = time.time() - start_time
+        sec_per_batch = duration / 20.0
+        examples_per_sec = FLAGS.batch_size / sec_per_batch
+        print('%s: [%d batches out of %d] (%.1f examples/sec; %.3f'
+              'sec/batch) loss = %.6f' % (datetime.now(), step, num_iter,
+                examples_per_sec, sec_per_batch, loss))
+        start_time = time.time()
 
       # Compute precision @ 1.
       precision_at_1 = count_top_1 / total_sample_count
@@ -147,6 +150,17 @@ def evaluate(dataset):
     # inference model.
     logits, _ = inception.inference(images, num_classes)
 
+    # Loss.
+    batch_size = images.get_shape().as_list()[0]
+    inception.loss(logits, labels, batch_size=batch_size)
+
+    # Assemble all of the losses for the current tower only.
+    losses = tf.get_collection(slim.losses.LOSSES_COLLECTION)
+
+    # Calculate the total loss for the current tower.
+    regularization_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
+    total_loss = tf.add_n(losses + regularization_losses, name='total_loss')
+
     # Calculate predictions.
     top_1_op = tf.nn.in_top_k(logits, labels, 1)
     top_5_op = tf.nn.in_top_k(logits, labels, 5)
@@ -165,7 +179,8 @@ def evaluate(dataset):
                                             graph_def=graph_def)
 
     while True:
-      _eval_once(saver, summary_writer, top_1_op, top_5_op, summary_op)
+      _eval_once(saver, summary_writer,
+                 top_1_op, top_5_op, summary_op, total_loss)
       if FLAGS.run_once:
         break
       time.sleep(FLAGS.eval_interval_secs)
