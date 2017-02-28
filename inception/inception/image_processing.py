@@ -41,6 +41,7 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
+import numpy as np
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -69,6 +70,14 @@ tf.app.flags.DEFINE_integer('input_queue_memory_factor', 16,
                             """Default is ideal but try smaller values, e.g. """
                             """4, 2 or 1, if host memory is constrained. See """
                             """comments in code for more details.""")
+
+tf.app.flags.DEFINE_boolean('val_subset', False,
+                            """Whether to run eval with a subset.""")
+tf.app.flags.DEFINE_integer('val_subset_seed', 0,
+                            """Seed for shuffle validation set.""")
+tf.app.flags.DEFINE_integer('val_subset_shards', 5,
+                            """How many shards for validation."""
+                            """Around 390 examples/shard.""")
 
 
 def inputs(dataset, batch_size=None, num_preprocess_threads=None):
@@ -427,6 +436,11 @@ def batch_inputs(dataset, batch_size, train, num_preprocess_threads=None,
     data_files = dataset.data_files()
     if data_files is None:
       raise ValueError('No data files found for this dataset')
+
+    # Only use a random subset of shards for validation.
+    if FLAGS.val_subset:
+      np.random.seed(FLAGS.val_subset_seed)
+      data_files = np.random.choice(data_files, FLAGS.val_subset_shards)
 
     # Create filename_queue
     if train:
