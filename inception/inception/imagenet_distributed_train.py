@@ -36,6 +36,7 @@ def main(unused_args):
   # cluster spec.
   ps_hosts = FLAGS.ps_hosts.split(',')
   worker_hosts = FLAGS.worker_hosts.split(',')
+  num_tasks = FLAGS.num_tasks
   tf.logging.info('PS hosts are: %s' % ps_hosts)
   tf.logging.info('Worker hosts are: %s' % worker_hosts)
 
@@ -58,7 +59,7 @@ def main(unused_args):
     if FLAGS.task_id == 0:
       if not tf.gfile.Exists(FLAGS.train_dir):
         tf.gfile.MakeDirs(FLAGS.train_dir)
-    inception_distributed_train.train(server.target, dataset, cluster_spec)
+    inception_distributed_train.train(server.target, dataset, cluster_spec, num_tasks)
 
 if __name__ == '__main__':
   tf.logging.set_verbosity(tf.logging.INFO)

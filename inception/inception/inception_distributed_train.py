@@ -58,6 +58,9 @@ tf.app.flags.DEFINE_integer(
 
 # More details can be found in the sync_replicas_optimizer class:
 # tensorflow/python/training/sync_replicas_optimizer.py
+tf.app.flags.DEFINE_integer('num_tasks', 0,
+                            """Number of logical tasks / tokens to """
+                            """queue per epoch.""")
 tf.app.flags.DEFINE_integer('num_replicas_to_aggregate', -1,
                             """Number of gradients to collect before """
                             """updating the parameters.""")
@@ -87,11 +90,12 @@ RMSPROP_MOMENTUM = 0.9             # Momentum in RMSProp.
 RMSPROP_EPSILON = 1.0              # Epsilon term for RMSProp.
 
 
-def train(target, dataset, cluster_spec):
+def train(target, dataset, cluster_spec, num_tasks):
   """Train Inception on a dataset for a number of steps."""
   # Number of workers and parameter servers are infered from the workers and ps
   # hosts string.
-  num_workers = len(cluster_spec.as_dict()['worker'])
+  # num_workers = len(cluster_spec.as_dict()['worker'])
+  num_workers = num_tasks
   num_parameter_servers = len(cluster_spec.as_dict()['ps'])
   # If no value is given, num_replicas_to_aggregate defaults to be the number of
   # workers.
@@ -282,13 +286,13 @@ def train(target, dataset, cluster_spec):
             break
           duration = time.time() - start_time
 
-          if step % 30 == 0:
-            examples_per_sec = FLAGS.batch_size / float(duration)
-            format_str = ('Worker %d: %s: step %d, loss = %.2f'
-                          '(%.1f examples/sec; %.3f  sec/batch)')
-            tf.logging.info(format_str %
-                            (FLAGS.task_id, datetime.now(), step, loss_value,
-                             examples_per_sec, duration))
+          #if step % 30 == 0:
+          examples_per_sec = FLAGS.batch_size / float(duration)
+          format_str = ('Worker %d: %s: step %d, loss = %.4f '
+                        '(%.1f examples/sec; %.3f  sec/batch)')
+          print(format_str %
+                (FLAGS.task_id, datetime.now(), step, loss_value,
+                 examples_per_sec, duration))
 
           # Determine if the summary_op should be run on the chief worker.
           if is_chief and next_summary_time < time.time():

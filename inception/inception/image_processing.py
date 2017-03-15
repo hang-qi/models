@@ -440,7 +440,7 @@ def batch_inputs(dataset, batch_size, train, num_preprocess_threads=None,
     # Only use a random subset of shards for validation.
     if FLAGS.val_subset:
       np.random.seed(FLAGS.val_subset_seed)
-      data_files = np.random.choice(data_files, FLAGS.val_subset_shards)
+      data_files = list(np.random.choice(sorted(data_files), FLAGS.val_subset_shards))
 
     # Create filename_queue
     if train:
