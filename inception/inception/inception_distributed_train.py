@@ -310,9 +310,10 @@ def train(target, dataset, cluster_spec, num_tasks):
           raise
 
       # Stop the supervisor.  This also waits for service threads to finish.
-      if is_chief:
-        sess.run(clean_up_op)
-      sv.stop()
+      try:
+        sv.stop()
+      except:
+        tf.logging.error('sv stop error.')
 
       # Save after the training ends.
       if is_chief:
