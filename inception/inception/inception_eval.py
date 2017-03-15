@@ -147,12 +147,11 @@ def evaluate(dataset):
 
     # Build a Graph that computes the logits predictions from the
     # inference model.
-    all_logits = inception.inference(images, num_classes)
-    logits = all_logits[0]
+    logits, _ = inception.inference(images, num_classes)
 
     # Loss.
     batch_size = images.get_shape().as_list()[0]
-    inception.loss(all_logits, labels, batch_size=batch_size)
+    inception.loss([logits], labels, batch_size=batch_size, aux_loss=False)
 
     # Assemble all of the losses for the current tower only.
     losses = tf.get_collection(slim.losses.LOSSES_COLLECTION)

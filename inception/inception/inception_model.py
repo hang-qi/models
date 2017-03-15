@@ -95,7 +95,7 @@ def inference(images, num_classes, for_training=False, restore_logits=True,
   return logits, auxiliary_logits
 
 
-def loss(logits, labels, batch_size=None):
+def loss(logits, labels, batch_size=None, aux_loss=True):
   """Adds all losses for the model.
 
   Note the final loss is not returned. Instead, the list of losses are collected
@@ -127,12 +127,13 @@ def loss(logits, labels, batch_size=None):
                                  label_smoothing=0.1,
                                  weight=1.0)
 
-  # Cross entropy loss for the auxiliary softmax head.
-  slim.losses.cross_entropy_loss(logits[1],
-                                 dense_labels,
-                                 label_smoothing=0.1,
-                                 weight=0.4,
-                                 scope='aux_loss')
+  if aux_loss:
+    # Cross entropy loss for the auxiliary softmax head.
+    slim.losses.cross_entropy_loss(logits[1],
+                                   dense_labels,
+                                   label_smoothing=0.1,
+                                   weight=0.4,
+                                   scope='aux_loss')
 
 
 def _activation_summary(x):
