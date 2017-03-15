@@ -41,8 +41,7 @@ def main(unused_args):
   tf.logging.info('Worker hosts are: %s' % worker_hosts)
 
   cluster_spec = tf.train.ClusterSpec({'ps': ps_hosts,
-                                       'worker': worker_hosts,
-                                       'num_tasks': num_tasks})
+                                       'worker': worker_hosts})
   server = tf.train.Server(
       {'ps': ps_hosts,
        'worker': worker_hosts},
@@ -60,7 +59,7 @@ def main(unused_args):
     if FLAGS.task_id == 0:
       if not tf.gfile.Exists(FLAGS.train_dir):
         tf.gfile.MakeDirs(FLAGS.train_dir)
-    inception_distributed_train.train(server.target, dataset, cluster_spec)
+    inception_distributed_train.train(server.target, dataset, cluster_spec, num_tasks)
 
 if __name__ == '__main__':
   tf.logging.set_verbosity(tf.logging.INFO)

@@ -90,12 +90,12 @@ RMSPROP_MOMENTUM = 0.9             # Momentum in RMSProp.
 RMSPROP_EPSILON = 1.0              # Epsilon term for RMSProp.
 
 
-def train(target, dataset, cluster_spec):
+def train(target, dataset, cluster_spec, num_tasks):
   """Train Inception on a dataset for a number of steps."""
   # Number of workers and parameter servers are infered from the workers and ps
   # hosts string.
   # num_workers = len(cluster_spec.as_dict()['worker'])
-  num_workers = cluster_spec.as_dict()['num_tasks']
+  num_workers = num_tasks
   num_parameter_servers = len(cluster_spec.as_dict()['ps'])
   # If no value is given, num_replicas_to_aggregate defaults to be the number of
   # workers.
