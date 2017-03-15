@@ -310,10 +310,12 @@ def train(target, dataset, cluster_spec, num_tasks):
           raise
 
       # Stop the supervisor.  This also waits for service threads to finish.
+      if is_chief:
+        sess.run(clean_up_op)
       sv.stop()
 
       # Save after the training ends.
       if is_chief:
         saver.save(sess,
                    os.path.join(FLAGS.train_dir, 'model.ckpt'),
-                   global_step=global_step)
+                   global_step=step)
