@@ -36,11 +36,13 @@ def main(unused_args):
   # cluster spec.
   ps_hosts = FLAGS.ps_hosts.split(',')
   worker_hosts = FLAGS.worker_hosts.split(',')
+  num_tasks = FLAGS.num_tasks
   tf.logging.info('PS hosts are: %s' % ps_hosts)
   tf.logging.info('Worker hosts are: %s' % worker_hosts)
 
   cluster_spec = tf.train.ClusterSpec({'ps': ps_hosts,
-                                       'worker': worker_hosts})
+                                       'worker': worker_hosts,
+                                       'num_tasks': num_tasks})
   server = tf.train.Server(
       {'ps': ps_hosts,
        'worker': worker_hosts},

@@ -58,6 +58,9 @@ tf.app.flags.DEFINE_integer(
 
 # More details can be found in the sync_replicas_optimizer class:
 # tensorflow/python/training/sync_replicas_optimizer.py
+tf.app.flags.DEFINE_integer('num_tasks', 0,
+                            """Number of logical tasks / tokens to """
+                            """queue per epoch.""")
 tf.app.flags.DEFINE_integer('num_replicas_to_aggregate', -1,
                             """Number of gradients to collect before """
                             """updating the parameters.""")
@@ -91,7 +94,8 @@ def train(target, dataset, cluster_spec):
   """Train Inception on a dataset for a number of steps."""
   # Number of workers and parameter servers are infered from the workers and ps
   # hosts string.
-  num_workers = len(cluster_spec.as_dict()['worker'])
+  # num_workers = len(cluster_spec.as_dict()['worker'])
+  num_workers = cluster_spec.as_dict()['num_tasks']
   num_parameter_servers = len(cluster_spec.as_dict()['ps'])
   # If no value is given, num_replicas_to_aggregate defaults to be the number of
   # workers.
