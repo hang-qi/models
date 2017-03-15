@@ -102,8 +102,7 @@ def _eval_once(saver, summary_writer, top_1_op, top_5_op, summary_op, loss_op):
       print('%s: starting evaluation on (%s).' % (datetime.now(), FLAGS.subset))
       start_time = time.time()
       while step < num_iter and not coord.should_stop():
-        loss = sess.run(loss_op)
-        top_1, top_5 = sess.run([top_1_op, top_5_op])
+        top_1, top_5, loss = sess.run([top_1_op, top_5_op, loss_op])
         count_top_1 += np.sum(top_1)
         count_top_5 += np.sum(top_5)
         step += 1
@@ -160,6 +159,13 @@ def evaluate(dataset):
     # Calculate the total loss for the current tower.
     regularization_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
     total_loss = tf.add_n(losses + regularization_losses, name='total_loss')
+
+    # Compute the moving average of all individual losses and the total loss.
+    loss_averages = tf.train.ExponentialMovingAverage(0.9, name='avg')
+    loss_averages_op = loss_averages.apply(losses + [total_loss])
+
+    with tf.control_dependencies([loss_averages_op]):
+        total_loss = tf.identity(total_loss)
 
     # Calculate predictions.
     top_1_op = tf.nn.in_top_k(logits, labels, 1)
