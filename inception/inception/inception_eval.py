@@ -160,13 +160,6 @@ def evaluate(dataset):
     regularization_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
     total_loss = tf.add_n(losses + regularization_losses, name='total_loss')
 
-    # Compute the moving average of all individual losses and the total loss.
-    loss_averages = tf.train.ExponentialMovingAverage(0.9, name='avg')
-    loss_averages_op = loss_averages.apply(losses + [total_loss])
-
-    with tf.control_dependencies([loss_averages_op]):
-        total_loss = tf.identity(total_loss)
-
     # Calculate predictions.
     top_1_op = tf.nn.in_top_k(logits, labels, 1)
     top_5_op = tf.nn.in_top_k(logits, labels, 5)
