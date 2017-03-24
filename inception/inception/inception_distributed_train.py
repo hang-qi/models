@@ -230,7 +230,7 @@ def train(target, dataset, cluster_spec, num_tasks):
       # More details can be found in sync_replicas_optimizer.
       chief_queue_runners = [opt.get_chief_queue_runner()]
       init_tokens_op = opt.get_init_tokens_op()
-      clean_up_op = opt.get_clean_up_op()
+      # clean_up_op = opt.get_clean_up_op()
 
       # Create a saver.
       saver = tf.train.Saver(max_to_keep=None)
@@ -302,9 +302,9 @@ def train(target, dataset, cluster_spec, num_tasks):
             # Determine the next time for running the summary.
             next_summary_time += FLAGS.save_summaries_secs
         except:
-          if is_chief:
-            tf.logging.info('About to execute sync_clean_up_op!')
-            sess.run(clean_up_op)
+          # if is_chief:
+          #   tf.logging.info('About to execute sync_clean_up_op!')
+          #   sess.run(clean_up_op)
           raise
 
       # Stop the supervisor.  This also waits for service threads to finish.
