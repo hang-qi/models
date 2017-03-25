@@ -216,12 +216,13 @@ def train(target, dataset, cluster_spec, num_tasks):
           variable_averages=exp_moving_averager,
           variables_to_average=variables_to_average)
 
-      batchnorm_updates = tf.get_collection(slim.ops.UPDATE_OPS_COLLECTION)
-      assert batchnorm_updates, 'Batchnorm updates are missing'
-      batchnorm_updates_op = tf.group(*batchnorm_updates)
-      # Add dependency to compute batchnorm_updates.
-      with tf.control_dependencies([batchnorm_updates_op]):
-        total_loss = tf.identity(total_loss)
+      if FLAGS.model_name == 'inception':
+        batchnorm_updates = tf.get_collection(slim.ops.UPDATE_OPS_COLLECTION)
+        assert batchnorm_updates, 'Batchnorm updates are missing'
+        batchnorm_updates_op = tf.group(*batchnorm_updates)
+        # Add dependency to compute batchnorm_updates.
+        with tf.control_dependencies([batchnorm_updates_op]):
+          total_loss = tf.identity(total_loss)
 
       # Compute gradients with respect to the loss.
       grads = opt.compute_gradients(total_loss)
