@@ -58,6 +58,18 @@ py_library(
     ],
 )
 
+py_library(
+    name = "alexnet",
+    srcs = [
+        "alexnet_model.py",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":dataset",
+        "//inception/slim",
+    ],
+)
+
 py_binary(
     name = "imagenet_eval",
     srcs = [
@@ -88,6 +100,7 @@ py_library(
     deps = [
         ":image_processing",
         ":inception",
+        ":alexnet",
     ],
 )
 
@@ -132,6 +145,7 @@ py_library(
     deps = [
         ":image_processing",
         ":inception",
+        ":alexnet",
     ],
 )
 
@@ -143,6 +157,7 @@ py_library(
     deps = [
         ":image_processing",
         ":inception",
+        ":alexnet",
     ],
 )
 

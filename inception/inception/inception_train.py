@@ -29,6 +29,7 @@ import tensorflow as tf
 
 from inception import image_processing
 from inception import inception_model as inception
+from inception import alexnet_model as alexnet
 from inception.slim import slim
 
 FLAGS = tf.app.flags.FLAGS
@@ -73,6 +74,9 @@ tf.app.flags.DEFINE_float('num_epochs_per_decay', 30.0,
 tf.app.flags.DEFINE_float('learning_rate_decay_factor', 0.16,
                           """Learning rate decay factor.""")
 
+tf.app.flags.DEFINE_string('model_name', 'inception',
+                           'inception (default) or alexnet.')
+
 # Constants dictating the learning rate schedule.
 RMSPROP_DECAY = 0.9                # Decay term for RMSProp.
 RMSPROP_MOMENTUM = 0.9             # Momentum in RMSProp.
@@ -102,16 +106,22 @@ def _tower_loss(images, labels, num_classes, scope, reuse_variables=None):
   # logit is the number of classes in specified Dataset.
   restore_logits = not FLAGS.fine_tune
 
+  # Choose model based on flags.
+  if FLAGS.model_name == 'inception':
+    model = inception
+  elif FLAGS.model_name == 'alexnet':
+    model = alexnet
+
   # Build inference Graph.
   with tf.variable_scope(tf.get_variable_scope(), reuse=reuse_variables):
-    logits = inception.inference(images, num_classes, for_training=True,
-                                 restore_logits=restore_logits,
-                                 scope=scope)
+    logits = model.inference(images, num_classes, for_training=True,
+                             restore_logits=restore_logits,
+                             scope=scope)
 
   # Build the portion of the Graph calculating the losses. Note that we will
   # assemble the total_loss using a custom function below.
   split_batch_size = images.get_shape().as_list()[0]
-  inception.loss(logits, labels, batch_size=split_batch_size)
+  model.loss(logits, labels, batch_size=split_batch_size)
 
   # Assemble all of the losses for the current tower only.
   losses = tf.get_collection(slim.losses.LOSSES_COLLECTION, scope)
@@ -129,7 +139,7 @@ def _tower_loss(images, labels, num_classes, scope, reuse_variables=None):
   for l in losses + [total_loss]:
     # Remove 'tower_[0-9]/' from the name in case this is a multi-GPU training
     # session. This helps the clarity of presentation on TensorBoard.
-    loss_name = re.sub('%s_[0-9]*/' % inception.TOWER_NAME, '', l.op.name)
+    loss_name = re.sub('%s_[0-9]*/' % model.TOWER_NAME, '', l.op.name)
     # Name each loss as '(raw)' and name the moving average version of the loss
     # as the original loss name.
     tf.summary.scalar(loss_name +' (raw)', l)
@@ -180,6 +190,12 @@ def _average_gradients(tower_grads):
 
 def train(dataset):
   """Train on dataset for a number of steps."""
+  # Choose model based on flags.
+  if FLAGS.model_name == 'inception':
+    model = inception
+  elif FLAGS.model_name == 'alexnet':
+    model = alexnet
+
   with tf.Graph().as_default(), tf.device('/cpu:0'):
     # Create a variable to count the number of train() calls. This equals the
     # number of batches processed * FLAGS.num_gpus.
@@ -231,7 +247,7 @@ def train(dataset):
     reuse_variables = None
     for i in range(FLAGS.num_gpus):
       with tf.device('/gpu:%d' % i):
-        with tf.name_scope('%s_%d' % (inception.TOWER_NAME, i)) as scope:
+        with tf.name_scope('%s_%d' % (model.TOWER_NAME, i)) as scope:
           # Force all Variables to reside on the CPU.
           with slim.arg_scope([slim.variables.variable], device='/cpu:0'):
             # Calculate the loss for one tower of the ImageNet model. This
@@ -288,7 +304,7 @@ def train(dataset):
     # global statistics. This is more complicated then need be but we employ
     # this for backward-compatibility with our previous models.
     variable_averages = tf.train.ExponentialMovingAverage(
-        inception.MOVING_AVERAGE_DECAY, global_step)
+        model.MOVING_AVERAGE_DECAY, global_step)
 
     # Another possibility is to use tf.slim.get_variables().
     variables_to_average = (tf.trainable_variables() +
