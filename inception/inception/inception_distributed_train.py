@@ -29,6 +29,7 @@ import tensorflow as tf
 
 from inception import image_processing
 from inception import inception_model as inception
+from inception import alexnet_model as alexnet
 from inception.slim import slim
 
 FLAGS = tf.app.flags.FLAGS
@@ -84,6 +85,9 @@ tf.app.flags.DEFINE_float('num_epochs_per_decay', 2.0,
 tf.app.flags.DEFINE_float('learning_rate_decay_factor', 0.94,
                           'Learning rate decay factor.')
 
+tf.app.flags.DEFINE_string('model_name', 'inception',
+                           'inception (default) or alexnet.')
+
 # Constants dictating the learning rate schedule.
 RMSPROP_DECAY = 0.9                # Decay term for RMSProp.
 RMSPROP_MOMENTUM = 0.9             # Momentum in RMSProp.
@@ -112,6 +116,13 @@ def train(target, dataset, cluster_spec, num_tasks):
   # Choose worker 0 as the chief. Note that any worker could be the chief
   # but there should be only one chief.
   is_chief = (FLAGS.task_id == 0)
+
+
+  # Choose model based on flags.
+  if FLAGS.model_name == 'inception':
+    model = inception
+  elif FLAGS.model_name == 'alexnet':
+    model = alexnet
 
   # Ops are assigned to worker by default.
   with tf.device('/job:worker/task:%d' % FLAGS.task_id):
@@ -153,9 +164,9 @@ def train(target, dataset, cluster_spec, num_tasks):
       # Number of classes in the Dataset label set plus 1.
       # Label 0 is reserved for an (unused) background class.
       num_classes = dataset.num_classes() + 1
-      logits = inception.inference(images, num_classes, for_training=True)
+      logits = model.inference(images, num_classes, for_training=True)
       # Add classification loss.
-      inception.loss(logits, labels)
+      model.loss(logits, labels)
 
       # Gather all of the losses including regularization losses.
       losses = tf.get_collection(slim.losses.LOSSES_COLLECTION)
@@ -188,7 +199,7 @@ def train(target, dataset, cluster_spec, num_tasks):
       # This is not needed when the number of replicas are small but important
       # for synchronous distributed training with tens of workers/replicas.
       exp_moving_averager = tf.train.ExponentialMovingAverage(
-          inception.MOVING_AVERAGE_DECAY, global_step)
+          model.MOVING_AVERAGE_DECAY, global_step)
 
       variables_to_average = (
           tf.trainable_variables() + tf.moving_average_variables())

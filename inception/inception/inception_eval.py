@@ -29,6 +29,7 @@ import tensorflow as tf
 
 from inception import image_processing
 from inception import inception_model as inception
+from inception import alexnet_model as alexnet
 from inception.slim import slim
 
 
@@ -52,6 +53,8 @@ tf.app.flags.DEFINE_integer('num_examples', 50000,
 tf.app.flags.DEFINE_string('subset', 'validation',
                            """Either 'validation' or 'train'.""")
 
+tf.app.flags.DEFINE_string('model_name', 'inception',
+                           'inception (default) or alexnet.')
 
 def _eval_once(saver, summary_writer, top_1_op, top_5_op, summary_op, loss_op):
   """Runs Eval once.
@@ -137,6 +140,13 @@ def _eval_once(saver, summary_writer, top_1_op, top_5_op, summary_op, loss_op):
 
 def evaluate(dataset):
   """Evaluate model on Dataset for a number of steps."""
+
+  # Choose model based on flags.
+  if FLAGS.model_name == 'inception':
+    model = inception
+  elif FLAGS.model_name == 'alexnet':
+    model = alexnet
+
   with tf.Graph().as_default():
     # Get images and labels from the dataset.
     images, labels = image_processing.inputs(dataset)
@@ -147,11 +157,11 @@ def evaluate(dataset):
 
     # Build a Graph that computes the logits predictions from the
     # inference model.
-    logits, _ = inception.inference(images, num_classes)
+    logits, _ = model.inference(images, num_classes)
 
     # Loss.
     batch_size = images.get_shape().as_list()[0]
-    inception.loss([logits], labels, batch_size=batch_size, aux_loss=False)
+    model.loss([logits], labels, batch_size=batch_size, aux_loss=False)
 
     # Assemble all of the losses for the current tower only.
     losses = tf.get_collection(slim.losses.LOSSES_COLLECTION)
@@ -166,7 +176,7 @@ def evaluate(dataset):
 
     # Restore the moving average version of the learned variables for eval.
     variable_averages = tf.train.ExponentialMovingAverage(
-        inception.MOVING_AVERAGE_DECAY)
+        model.MOVING_AVERAGE_DECAY)
     variables_to_restore = variable_averages.variables_to_restore()
     saver = tf.train.Saver(variables_to_restore)
 
