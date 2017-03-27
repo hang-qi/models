@@ -26,6 +26,7 @@ import time
 
 import numpy as np
 import tensorflow as tf
+from tensorflow.python.client import timeline
 
 from inception import image_processing
 from inception import inception_model as inception
@@ -280,6 +281,8 @@ def train(target, dataset, cluster_spec, num_tasks):
       tf.logging.info('Started %d queues for processing input data.',
                       len(queue_runners))
 
+      run_metadata = tf.RunMetadata()
+
       if is_chief:
         sv.start_queue_runners(sess, chief_queue_runners)
         sess.run(init_tokens_op)
@@ -291,7 +294,10 @@ def train(target, dataset, cluster_spec, num_tasks):
       while not sv.should_stop():
         try:
           start_time = time.time()
-          loss_value, step = sess.run([train_op, global_step])
+          loss_value, step = sess.run(
+              [train_op, global_step],
+              options=tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE),
+              run_metadata=run_metadata)
           assert not np.isnan(loss_value), 'Model diverged with loss = NaN'
           duration = time.time() - start_time
 
@@ -328,6 +334,12 @@ def train(target, dataset, cluster_spec, num_tasks):
 
       # Save after the training ends.
       if is_chief:
+        # Output timeline for tracing.
+        trace = timeline.Timeline(step_stats=run_metadata.step_stats)
+        with open(os.path.dir(FLAGS.train_dir, '..', 'timeline.ctf.json',
+                              'w')) as trace_file:
+          trace_file.write(trace.generate_chrome_trace_format())
+
         saver.save(sess,
                    os.path.join(FLAGS.train_dir, 'model.ckpt'),
                    global_step=global_step)
