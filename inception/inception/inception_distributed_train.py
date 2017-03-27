@@ -245,7 +245,7 @@ def train(target, dataset, cluster_spec, num_tasks):
       # clean_up_op = opt.get_clean_up_op()
 
       # Create a saver.
-      saver = tf.train.Saver(max_to_keep=1)
+      saver = tf.train.Saver()
 
       # Build the summary operation based on the TF collection of Summaries.
       summary_op = tf.summary.merge_all()
