@@ -336,8 +336,8 @@ def train(target, dataset, cluster_spec, num_tasks):
       if is_chief:
         # Output timeline for tracing.
         trace = timeline.Timeline(step_stats=run_metadata.step_stats)
-        with open(os.path.dir(FLAGS.train_dir, '..', 'timeline.ctf.json',
-                              'w')) as trace_file:
+        with open(os.path.join(FLAGS.train_dir, '..', 'timeline.ctf.json'),
+                  'w') as trace_file:
           trace_file.write(trace.generate_chrome_trace_format())
 
         saver.save(sess,
