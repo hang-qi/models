@@ -284,12 +284,12 @@ def train(target, dataset, cluster_spec, num_tasks):
       run_metadata = tf.RunMetadata()
 
       sync_replicas_hook = opt.make_session_run_hook(is_chief)
-      sess = tf.training.MonitoredTrainingSession(
+      sess = tf.train.MonitoredTrainingSession(
               master=target,
               checkpoint_dir=FLAGS.train_dir,
               is_chief=is_chief,
               hooks=[sync_replicas_hook],
-              save_summaries_steps=30,
+              save_summaries_steps=10,
               config=sess_config)
 
       # Train, checking for Nans. Concurrently run the summary operation at a
@@ -336,7 +336,7 @@ def train(target, dataset, cluster_spec, num_tasks):
 
       # Save after the training ends.
       if is_chief:
-        saver.save(sess,
+        saver.save(sess._tf_sess(),
                    os.path.join(FLAGS.train_dir, 'model.ckpt'),
                    global_step=global_step)
       sess.close()
