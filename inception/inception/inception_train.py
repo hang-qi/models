@@ -77,6 +77,12 @@ tf.app.flags.DEFINE_float('learning_rate_decay_factor', 0.16,
 tf.app.flags.DEFINE_string('model_name', 'inception',
                            'inception (default) or alexnet.')
 
+tf.app.flags.DEFINE_integer('batch_size_per_gpu', 64,
+                            'examples to to fit in each gpu.')
+
+tf.app.flags.DEFINE_integer('save_summaries_secs', 180,
+                            'Save summaries interval seconds.')
+
 # Constants dictating the learning rate schedule.
 RMSPROP_DECAY = 0.9                # Decay term for RMSProp.
 RMSPROP_MOMENTUM = 0.9             # Momentum in RMSProp.
@@ -225,6 +231,11 @@ def train(dataset):
         'Batch size must be divisible by number of GPUs')
     split_batch_size = int(FLAGS.batch_size / FLAGS.num_gpus)
 
+    assert split_batch_size % FLAGS.batch_size_per_gpu == 0, (
+        'Batch size must be divisible by number of GPUs * batch size per gpu')
+    tasks_per_gpu = split_batch_size // FLAGS.batch_size_per_gpu
+    num_tasks = FLAGS.batch_size // tasks_per_gpu
+
     # Override the number of preprocessing threads to account for the increased
     # number of GPU towers.
     num_preprocess_threads = FLAGS.num_preprocess_threads * FLAGS.num_gpus
@@ -239,8 +250,8 @@ def train(dataset):
     num_classes = dataset.num_classes() + 1
 
      # Split the batch of images and labels for towers.
-    images_splits = tf.split(axis=0, num_or_size_splits=FLAGS.num_gpus, value=images)
-    labels_splits = tf.split(axis=0, num_or_size_splits=FLAGS.num_gpus, value=labels)
+    images_splits = tf.split(axis=0, num_or_size_splits=num_tasks, value=images)
+    labels_splits = tf.split(axis=0, num_or_size_splits=num_tasks, value=labels)
 
     # Calculate the gradients for each model tower.
     tower_grads = []
@@ -248,33 +259,42 @@ def train(dataset):
     for i in range(FLAGS.num_gpus):
       with tf.device('/gpu:%d' % i):
         with tf.name_scope('%s_%d' % (model.TOWER_NAME, i)) as scope:
-          # Force all Variables to reside on the CPU.
-          with slim.arg_scope([slim.variables.variable], device='/cpu:0'):
-            # Calculate the loss for one tower of the ImageNet model. This
-            # function constructs the entire ImageNet model but shares the
-            # variables across all towers.
-            loss = _tower_loss(images_splits[i], labels_splits[i], num_classes,
-                               scope, reuse_variables)
+          for t in range(tasks_per_gpu):
+            # Each GPU calculates multiple tasks.
+            if t != 0:
+              scope.reuse_variables()
 
-          # Reuse variables for the next tower.
-          reuse_variables = True
+            task_images = images_splits[i * tasks_per_gpu + t]
+            task_labels = labels_splits[i * tasks_per_gpu + t]
 
-          # Retain the summaries from the final tower.
-          summaries = tf.get_collection(tf.GraphKeys.SUMMARIES, scope)
+            # Force all Variables to reside on the CPU.
+            with slim.arg_scope([slim.variables.variable], device='/cpu:0'):
+              # Calculate the loss for one tower of the ImageNet model. This
+              # function constructs the entire ImageNet model but shares the
+              # variables across all towers.
+              loss = _tower_loss(task_images, task_labels, num_classes,
+                                 scope, reuse_variables)
 
-          # Retain the Batch Normalization updates operations only from the
-          # final tower. Ideally, we should grab the updates from all towers
-          # but these stats accumulate extremely fast so we can ignore the
-          # other stats from the other towers without significant detriment.
-          batchnorm_updates = tf.get_collection(slim.ops.UPDATE_OPS_COLLECTION,
-                                                scope)
+            # Reuse variables for the next tower.
+            reuse_variables = True
 
-          # Calculate the gradients for the batch of data on this ImageNet
-          # tower.
-          grads = opt.compute_gradients(loss)
+            # Retain the summaries from the final tower.
+            summaries = tf.get_collection(tf.GraphKeys.SUMMARIES, scope)
 
-          # Keep track of the gradients across all towers.
-          tower_grads.append(grads)
+            # Retain the Batch Normalization updates operations only from the
+            # final tower. Ideally, we should grab the updates from all towers
+            # but these stats accumulate extremely fast so we can ignore the
+            # other stats from the other towers without significant detriment.
+            batchnorm_updates = tf.get_collection(
+              slim.ops.UPDATE_OPS_COLLECTION,
+              scope)
+
+            # Calculate the gradients for the batch of data on this ImageNet
+            # tower.
+            grads = opt.compute_gradients(loss)
+
+            # Keep track of the gradients across all towers.
+            tower_grads.append(grads)
 
     # We must calculate the mean of each gradient. Note that this is the
     # synchronization point across all towers.
@@ -349,6 +369,9 @@ def train(dataset):
         FLAGS.train_dir,
         graph=sess.graph)
 
+    # Train and concurrently run the summary operation at a
+    # specified interval.
+    next_summary_time = time.time() + FLAGS.save_summaries_secs
     for step in range(FLAGS.max_steps):
       start_time = time.time()
       _, loss_value = sess.run([train_op, loss])
@@ -358,14 +381,19 @@ def train(dataset):
 
       #if step % 10 == 0:
       examples_per_sec = FLAGS.batch_size / float(duration)
-      format_str = ('%s: step %d, loss = %.6f (%.1f examples/sec; %.3f '
+      format_str = ('%s: step %d, loss = %.4f (%.1f examples/sec; %.3f '
                     'sec/batch)')
       print(format_str % (datetime.now(), step, loss_value,
                           examples_per_sec, duration))
 
-      if step % 100 == 0:
+      if next_summary_time < time.time():
+        tf.logging.info('Running Summary operation.')
         summary_str = sess.run(summary_op)
         summary_writer.add_summary(summary_str, step)
+        tf.logging.info('Finished running Summary operation.')
+
+        # Determine the next time for running the summary.
+        next_summary_time += FLAGS.save_summaries_secs
 
       # Save the model checkpoint periodically.
       if step % 5000 == 0 or (step + 1) == FLAGS.max_steps:
