@@ -260,10 +260,6 @@ def train(dataset):
       with tf.device('/gpu:%d' % i):
         with tf.name_scope('%s_%d' % (model.TOWER_NAME, i)) as scope:
           for t in range(tasks_per_gpu):
-            # Each GPU calculates multiple tasks.
-            if t != 0:
-              scope.reuse_variables()
-
             task_images = images_splits[i * tasks_per_gpu + t]
             task_labels = labels_splits[i * tasks_per_gpu + t]
 
