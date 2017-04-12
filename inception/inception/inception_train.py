@@ -31,6 +31,7 @@ from tensorflow.python.client import timeline
 from inception import image_processing
 from inception import inception_model as inception
 from inception import alexnet_model as alexnet
+from inception import cifar_model as cifar10
 from inception.slim import slim
 
 FLAGS = tf.app.flags.FLAGS
@@ -76,7 +77,7 @@ tf.app.flags.DEFINE_float('learning_rate_decay_factor', 0.16,
                           """Learning rate decay factor.""")
 
 tf.app.flags.DEFINE_string('model_name', 'inception',
-                           'inception (default) or alexnet.')
+                           'inception (default), alexnet, cifar10.')
 
 tf.app.flags.DEFINE_integer('batch_size_per_gpu', 64,
                             'examples to to fit in each gpu.')
@@ -124,6 +125,8 @@ def _tower_loss(images, labels, num_classes, scope, reuse_variables=None):
     model = inception
   elif FLAGS.model_name == 'alexnet':
     model = alexnet
+  elif FLAGS.model_name == 'cifar10':
+    model = cifar10
 
   # Build inference Graph.
   with tf.variable_scope(tf.get_variable_scope(), reuse=reuse_variables):
@@ -208,6 +211,8 @@ def train(dataset):
     model = inception
   elif FLAGS.model_name == 'alexnet':
     model = alexnet
+  elif FLAGS.model_name == 'cifar10':
+    model = cifar10
 
   with tf.Graph().as_default(), tf.device('/cpu:0'):
     # Create a variable to count the number of train() calls. This equals the
@@ -246,9 +251,15 @@ def train(dataset):
     # Override the number of preprocessing threads to account for the increased
     # number of GPU towers.
     num_preprocess_threads = FLAGS.num_preprocess_threads * FLAGS.num_gpus
-    images, labels = image_processing.distorted_inputs(
-        dataset,
-        num_preprocess_threads=num_preprocess_threads)
+
+    if FLAGS.model_name in ['inception', 'alexnet']:
+      # Use ImageNet.
+      images, labels = image_processing.distorted_inputs(
+          dataset,
+          num_preprocess_threads=num_preprocess_threads)
+    else:
+      # Use CIFAR.
+      image, labels = cifar10.distorted_inputs()
 
     input_summaries = copy.copy(tf.get_collection(tf.GraphKeys.SUMMARIES))
 
@@ -387,7 +398,7 @@ def train(dataset):
     summary_writer = tf.summary.FileWriter(
         FLAGS.train_dir,
         graph=(sess.graph if FLAGS.save_graph else None))
-     
+
     run_metadata = tf.RunMetadata()
     run_options = None
     if FLAGS.timeline:
@@ -399,7 +410,7 @@ def train(dataset):
     next_summary_time = time.time() + FLAGS.save_summaries_secs
     for step in range(FLAGS.max_steps):
       start_time = time.time()
-      ret = sess.run([train_op] + losses, 
+      ret = sess.run([train_op] + losses,
                      options=run_options,
                      run_metadata=run_metadata)
       loss_value = np.mean(ret[1:])

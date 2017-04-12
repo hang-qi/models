@@ -40,6 +40,29 @@ py_library(
 )
 
 py_library(
+    name = "cifar10_input",
+    srcs = ["cifar10_input.py"],
+)
+
+py_library(
+    name = "cifar10_data",
+    srcs = ["cifar10_data.py"],
+    deps = [
+        ":cifar10",
+        ":cifar10_input",
+        ":dataset",
+    ],
+)
+
+py_library(
+    name = "cifar10",
+    srcs = ["cifar10.py"],
+    deps = [
+        ":cifar10_input",
+    ],
+)
+
+py_library(
     name = "image_processing",
     srcs = [
         "image_processing.py",
@@ -116,6 +139,18 @@ py_binary(
 )
 
 py_binary(
+    name = "hemingway_train",
+    srcs = [
+        "hemingway_train.py",
+    ],
+    deps = [
+        ":imagenet_data",
+        ":cifar10_data",
+        ":inception_train",
+    ],
+)
+
+py_binary(
     name = "imagenet_distributed_train",
     srcs = [
         "imagenet_distributed_train.py",
@@ -146,6 +181,7 @@ py_library(
         ":image_processing",
         ":inception",
         ":alexnet",
+        ":cifar10",
     ],
 )
 
