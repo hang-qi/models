@@ -26,6 +26,7 @@ import time
 
 import numpy as np
 import tensorflow as tf
+from tensorflow.python.client import timeline
 
 from inception import image_processing
 from inception import inception_model as inception
@@ -82,6 +83,12 @@ tf.app.flags.DEFINE_integer('batch_size_per_gpu', 64,
 
 tf.app.flags.DEFINE_integer('save_summaries_secs', 180,
                             'Save summaries interval seconds.')
+
+tf.app.flags.DEFINE_boolean('timeline', False,
+                            'Collect timeline.')
+
+tf.app.flags.DEFINE_boolean('save_graph', False,
+                            'Save graph to tensorboard event file.')
 
 # Constants dictating the learning rate schedule.
 RMSPROP_DECAY = 0.9                # Decay term for RMSProp.
@@ -249,48 +256,62 @@ def train(dataset):
     # Label 0 is reserved for an (unused) background class.
     num_classes = dataset.num_classes() + 1
 
-     # Split the batch of images and labels for towers.
+    # Split the batch of images and labels for towers.
     images_splits = tf.split(axis=0, num_or_size_splits=num_tasks, value=images)
     labels_splits = tf.split(axis=0, num_or_size_splits=num_tasks, value=labels)
 
     # Calculate the gradients for each model tower.
     tower_grads = []
+    losses = []
+
+    def ops_one_tower(i, t, reuse_variables, scope):
+      task_images = images_splits[i * tasks_per_gpu + t]
+      task_labels = labels_splits[i * tasks_per_gpu + t]
+
+      # Force all Variables to reside on the CPU.
+      with slim.arg_scope([slim.variables.variable], device='/cpu:0'):
+        # Calculate the loss for one tower of the ImageNet model. This
+        # function constructs the entire ImageNet model but shares the
+        # variables across all towers.
+        loss = _tower_loss(task_images, task_labels, num_classes,
+                           scope, reuse_variables)
+        losses.append(loss)
+
+      # Reuse variables for the next tower.
+      # reuse_variables = True
+
+      # Retain the summaries from the final tower.
+      summaries = tf.get_collection(tf.GraphKeys.SUMMARIES, scope)
+
+      # Retain the Batch Normalization updates operations only from the
+      # final tower. Ideally, we should grab the updates from all towers
+      # but these stats accumulate extremely fast so we can ignore the
+      # other stats from the other towers without significant detriment.
+      batchnorm_updates = tf.get_collection(
+        slim.ops.UPDATE_OPS_COLLECTION,
+        scope)
+
+      # Calculate the gradients for the batch of data on this ImageNet
+      # tower.
+      grads = opt.compute_gradients(loss)
+
+      # Keep track of the gradients across all towers.
+      tower_grads.append(grads)
+
+      return grads[0], summaries, batchnorm_updates
+
     reuse_variables = None
+    summaries = None
+    batchnorm_updates = None
     for i in range(FLAGS.num_gpus):
       with tf.device('/gpu:%d' % i):
-        with tf.name_scope('%s_%d' % (model.TOWER_NAME, i)) as scope:
-          for t in range(tasks_per_gpu):
-            task_images = images_splits[i * tasks_per_gpu + t]
-            task_labels = labels_splits[i * tasks_per_gpu + t]
-
-            # Force all Variables to reside on the CPU.
-            with slim.arg_scope([slim.variables.variable], device='/cpu:0'):
-              # Calculate the loss for one tower of the ImageNet model. This
-              # function constructs the entire ImageNet model but shares the
-              # variables across all towers.
-              loss = _tower_loss(task_images, task_labels, num_classes,
-                                 scope, reuse_variables)
-
-            # Reuse variables for the next tower.
-            reuse_variables = True
-
-            # Retain the summaries from the final tower.
-            summaries = tf.get_collection(tf.GraphKeys.SUMMARIES, scope)
-
-            # Retain the Batch Normalization updates operations only from the
-            # final tower. Ideally, we should grab the updates from all towers
-            # but these stats accumulate extremely fast so we can ignore the
-            # other stats from the other towers without significant detriment.
-            batchnorm_updates = tf.get_collection(
-              slim.ops.UPDATE_OPS_COLLECTION,
-              scope)
-
-            # Calculate the gradients for the batch of data on this ImageNet
-            # tower.
-            grads = opt.compute_gradients(loss)
-
-            # Keep track of the gradients across all towers.
-            tower_grads.append(grads)
+        task_dep = [tf.constant(0)]
+        for t in range(tasks_per_gpu):
+          with tf.name_scope('%s_%d_%d' % (model.TOWER_NAME, i, t)) as scope:
+            with tf.control_dependencies(task_dep):
+              task_dep, summaries, batchnorm_updates = ops_one_tower(
+                i, t, reuse_variables, scope)
+              reuse_variables = True
 
     # We must calculate the mean of each gradient. Note that this is the
     # synchronization point across all towers.
@@ -341,9 +362,11 @@ def train(dataset):
     # Build an initialization operation to run below.
     init = tf.global_variables_initializer()
 
+
     # Start running operations on the Graph. allow_soft_placement must be set to
     # True to build towers on GPU, as some of the ops do not have GPU
     # implementations.
+    tf.logging.info('Starting session.')
     sess = tf.Session(config=tf.ConfigProto(
         allow_soft_placement=True,
         log_device_placement=FLAGS.log_device_placement))
@@ -363,14 +386,23 @@ def train(dataset):
 
     summary_writer = tf.summary.FileWriter(
         FLAGS.train_dir,
-        graph=sess.graph)
+        graph=(sess.graph if FLAGS.save_graph else None))
+     
+    run_metadata = tf.RunMetadata()
+    run_options = None
+    if FLAGS.timeline:
+      run_option = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
 
     # Train and concurrently run the summary operation at a
     # specified interval.
+    tf.logging.info('Start training loop.')
     next_summary_time = time.time() + FLAGS.save_summaries_secs
     for step in range(FLAGS.max_steps):
       start_time = time.time()
-      _, loss_value = sess.run([train_op, loss])
+      ret = sess.run([train_op] + losses, 
+                     options=run_options,
+                     run_metadata=run_metadata)
+      loss_value = np.mean(ret[1:])
       duration = time.time() - start_time
 
       assert not np.isnan(loss_value), 'Model diverged with loss = NaN'
@@ -381,6 +413,15 @@ def train(dataset):
                     'sec/batch)')
       print(format_str % (datetime.now(), step, loss_value,
                           examples_per_sec, duration))
+
+      # Output timeline for tracing.
+      if FLAGS.timeline and step % 30 == 0:
+        trace = timeline.Timeline(step_stats=run_metadata.step_stats)
+        with open(os.path.join(
+                  FLAGS.train_dir, '..',
+                  'timeline.ctf_%d.json' % (step)),
+                  'w') as trace_file:
+          trace_file.write(trace.generate_chrome_trace_format())
 
       if next_summary_time < time.time():
         tf.logging.info('Running Summary operation.')
