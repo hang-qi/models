@@ -287,7 +287,7 @@ def inference(images, num_classes=NUM_CLASSES, for_training=False,
 
 
 
-def loss(logits, labels, batch_size=None):
+def loss(logits, labels, batch_size=None, aux_loss=False):
   """Add L2Loss to all the trainable variables.
   Add summary for "Loss" and "Loss/avg".
   Args:
