@@ -105,6 +105,18 @@ py_binary(
 )
 
 py_binary(
+    name = "hemingway_eval",
+    srcs = [
+        "hemingway_eval.py",
+    ],
+    deps = [
+        ":imagenet_data",
+        ":cifar10_data",
+        ":inception_eval",
+    ],
+)
+
+py_binary(
     name = "flowers_eval",
     srcs = [
         "flowers_eval.py",
@@ -124,6 +136,7 @@ py_library(
         ":image_processing",
         ":inception",
         ":alexnet",
+        ":cifar10",
     ],
 )
 
