@@ -79,7 +79,7 @@ tf.app.flags.DEFINE_float('learning_rate_decay_factor', 0.16,
 tf.app.flags.DEFINE_string('model_name', 'inception',
                            'inception (default), alexnet, cifar10.')
 
-tf.app.flags.DEFINE_integer('batch_size_per_gpu', 64,
+tf.app.flags.DEFINE_integer('num_examples_per_task', 64,
                             'examples to to fit in each gpu.')
 
 tf.app.flags.DEFINE_integer('save_summaries_secs', 180,
@@ -219,34 +219,48 @@ def train(dataset):
     # number of batches processed * FLAGS.num_gpus.
     global_step = tf.get_variable(
         'global_step', [],
-        initializer=tf.constant_initializer(0), trainable=False)
+        initializer=tf.constant_initializer(0), trainable=False,
+        collections=[tf.GraphKeys.GLOBAL_VARIABLES, 
+                     slim.variables.VARIABLES_TO_RESTORE])
 
-    # Calculate the learning rate schedule.
     num_batches_per_epoch = (dataset.num_examples_per_epoch() /
                              FLAGS.batch_size)
-    decay_steps = int(num_batches_per_epoch * FLAGS.num_epochs_per_decay)
+    if FLAGS.model_name == 'cifar10':
+      # Calculate the learning rate schedule.
+      decay_steps = int(num_batches_per_epoch * cifar10.NUM_EPOCHS_PER_DECAY)
 
-    # Decay the learning rate exponentially based on the number of steps.
-    lr = tf.train.exponential_decay(FLAGS.initial_learning_rate,
-                                    global_step,
-                                    decay_steps,
-                                    FLAGS.learning_rate_decay_factor,
-                                    staircase=True)
+      # Decay the learning rate exponentially based on the number of steps.
+      lr = tf.train.exponential_decay(cifar10.INITIAL_LEARNING_RATE,
+                                      global_step,
+                                      decay_steps,
+                                      cifar10.LEARNING_RATE_DECAY_FACTOR,
+                                      staircase=True)
+      opt = tf.train.GradientDescentOptimizer(lr)
+    else:
+      # Calculate the learning rate schedule.
+      decay_steps = int(num_batches_per_epoch * FLAGS.num_epochs_per_decay)
 
-    # Create an optimizer that performs gradient descent.
-    opt = tf.train.RMSPropOptimizer(lr, RMSPROP_DECAY,
-                                    momentum=RMSPROP_MOMENTUM,
-                                    epsilon=RMSPROP_EPSILON)
+      # Decay the learning rate exponentially based on the number of steps.
+      lr = tf.train.exponential_decay(FLAGS.initial_learning_rate,
+                                      global_step,
+                                      decay_steps,
+                                      FLAGS.learning_rate_decay_factor,
+                                      staircase=True)
+
+      # Create an optimizer that performs gradient descent.
+      opt = tf.train.RMSPropOptimizer(lr, RMSPROP_DECAY,
+                                      momentum=RMSPROP_MOMENTUM,
+                                      epsilon=RMSPROP_EPSILON)
 
     # Get images and labels for ImageNet and split the batch across GPUs.
     assert FLAGS.batch_size % FLAGS.num_gpus == 0, (
         'Batch size must be divisible by number of GPUs')
     split_batch_size = int(FLAGS.batch_size / FLAGS.num_gpus)
 
-    assert split_batch_size % FLAGS.batch_size_per_gpu == 0, (
+    assert split_batch_size % FLAGS.num_examples_per_task == 0, (
         'Batch size must be divisible by number of GPUs * batch size per gpu')
-    tasks_per_gpu = split_batch_size // FLAGS.batch_size_per_gpu
-    num_tasks = FLAGS.batch_size // tasks_per_gpu
+    tasks_per_gpu = split_batch_size // FLAGS.num_examples_per_task
+    num_tasks = FLAGS.batch_size // FLAGS.num_examples_per_task
 
     # Override the number of preprocessing threads to account for the increased
     # number of GPU towers.
@@ -265,7 +279,10 @@ def train(dataset):
 
     # Number of classes in the Dataset label set plus 1.
     # Label 0 is reserved for an (unused) background class.
-    num_classes = dataset.num_classes() + 1
+    if FLAGS.model_name == 'cifar10':
+      num_classes = dataset.num_classes()
+    else:
+      num_classes = dataset.num_classes() + 1
 
     # Split the batch of images and labels for towers.
     images_splits = tf.split(axis=0, num_or_size_splits=num_tasks, value=images)
@@ -383,14 +400,20 @@ def train(dataset):
         log_device_placement=FLAGS.log_device_placement))
     sess.run(init)
 
+    step = 0
     if FLAGS.pretrained_model_checkpoint_path:
-      assert tf.gfile.Exists(FLAGS.pretrained_model_checkpoint_path)
+      # assert tf.gfile.Exists(FLAGS.pretrained_model_checkpoint_path)
       variables_to_restore = tf.get_collection(
           slim.variables.VARIABLES_TO_RESTORE)
       restorer = tf.train.Saver(variables_to_restore)
       restorer.restore(sess, FLAGS.pretrained_model_checkpoint_path)
-      print('%s: Pre-trained model restored from %s' %
-            (datetime.now(), FLAGS.pretrained_model_checkpoint_path))
+
+      #step = FLAGS.pretrained_model_checkpoint_path.split('/')[-1].split('-')[-1]
+      #step = int(step)
+      step = int(sess.run(global_step))
+      print('%s: Successfully loaded model from %s at step=%d.' %
+            (datetime.now(), FLAGS.pretrained_model_checkpoint_path, step))
+      step += 1
 
     # Start the queue runners.
     tf.train.start_queue_runners(sess=sess)
@@ -408,7 +431,7 @@ def train(dataset):
     # specified interval.
     tf.logging.info('Start training loop.')
     next_summary_time = time.time() + FLAGS.save_summaries_secs
-    for step in range(FLAGS.max_steps):
+    while step < FLAGS.max_steps:
       start_time = time.time()
       ret = sess.run([train_op] + losses,
                      options=run_options,
@@ -434,7 +457,7 @@ def train(dataset):
                   'w') as trace_file:
           trace_file.write(trace.generate_chrome_trace_format())
 
-      if next_summary_time < time.time():
+      if step + 1 == FLAGS.max_steps or  next_summary_time < time.time():
         tf.logging.info('Running Summary operation.')
         summary_str = sess.run(summary_op)
         summary_writer.add_summary(summary_str, step)
@@ -447,3 +470,5 @@ def train(dataset):
       if step % 5000 == 0 or (step + 1) == FLAGS.max_steps:
         checkpoint_path = os.path.join(FLAGS.train_dir, 'model.ckpt')
         saver.save(sess, checkpoint_path, global_step=step)
+      
+      step += 1

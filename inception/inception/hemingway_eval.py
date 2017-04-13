@@ -14,7 +14,7 @@ FLAGS = tf.app.flags.FLAGS
 
 
 def main(_):
-  if FLAGS.model_name == 'cifar':
+  if FLAGS.model_name == 'cifar10':
     dataset = Cifar10Data(subset=FLAGS.subset)
     cifar10.maybe_download_and_extract()
   else:

@@ -213,8 +213,8 @@ def inference(images, num_classes=NUM_CLASSES, for_training=False,
   # If we only ran this model on a single GPU, we could simplify this function
   # by replacing all instances of tf.get_variable() with tf.Variable().
   #
-  # conv1
-  with tf.name_scope(scope, 'cifar10', [inputs]) as sc:
+  with tf.name_scope(scope, 'cifar10', [images]) as sc:
+    # conv1
     with tf.variable_scope('conv1') as scope:
       kernel = _variable_with_weight_decay('weights',
                                            shape=[5, 5, 3, 64],
@@ -283,7 +283,7 @@ def inference(images, num_classes=NUM_CLASSES, for_training=False,
       softmax_linear = tf.add(tf.matmul(local4, weights), biases, name=scope.name)
       _activation_summary(softmax_linear)
 
-  return softmax_linear
+  return softmax_linear, None
 
 
 
@@ -297,6 +297,7 @@ def loss(logits, labels, batch_size=None, aux_loss=False):
   Returns:
     Loss tensor of type float.
   """
+  logits = logits[0]
 
   # Calculate the average cross entropy loss across the batch.
   labels = tf.cast(labels, tf.int64)
@@ -307,7 +308,7 @@ def loss(logits, labels, batch_size=None, aux_loss=False):
 
   # The total loss is defined as the cross entropy loss plus all of the weight
   # decay terms (L2 loss).
-  return tf.add_n(tf.get_collection(LOSSES_COLLECTION), name='total_loss')
+  # return tf.add_n(tf.get_collection(LOSSES_COLLECTION), name='total_loss')
 
 
 def _add_loss_summaries(total_loss):
