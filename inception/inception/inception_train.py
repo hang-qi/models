@@ -31,7 +31,7 @@ from tensorflow.python.client import timeline
 from inception import image_processing
 from inception import inception_model as inception
 from inception import alexnet_model as alexnet
-from inception import cifar_model as cifar10
+from inception import cifar10
 from inception.slim import slim
 
 FLAGS = tf.app.flags.FLAGS
@@ -259,7 +259,7 @@ def train(dataset):
           num_preprocess_threads=num_preprocess_threads)
     else:
       # Use CIFAR.
-      image, labels = cifar10.distorted_inputs()
+      images, labels = cifar10.distorted_inputs()
 
     input_summaries = copy.copy(tf.get_collection(tf.GraphKeys.SUMMARIES))
 

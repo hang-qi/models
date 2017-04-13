@@ -255,7 +255,7 @@ def inference(images, num_classes=NUM_CLASSES, for_training=False,
     # local3
     with tf.variable_scope('local3') as scope:
       # Move everything into depth so we can perform a single matrix multiply.
-      reshape = tf.reshape(pool2, [FLAGS.batch_size, -1])
+      reshape = tf.reshape(pool2, [images.get_shape()[0].value, -1])
       dim = reshape.get_shape()[1].value
       weights = _variable_with_weight_decay('weights', shape=[dim, 384],
                                             stddev=0.04, wd=0.004)
