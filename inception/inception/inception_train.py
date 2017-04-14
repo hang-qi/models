@@ -350,6 +350,7 @@ def train(dataset):
 
     # Add a summary to track the learning rate.
     summaries.append(tf.summary.scalar('learning_rate', lr))
+    summaries.append(tf.summary.scalar('global_step', global_step))
 
     # Add histograms for gradients.
     for grad, var in grads:
@@ -403,9 +404,13 @@ def train(dataset):
     step = 0
     if FLAGS.pretrained_model_checkpoint_path:
       # assert tf.gfile.Exists(FLAGS.pretrained_model_checkpoint_path)
-      variables_to_restore = tf.get_collection(
-          slim.variables.VARIABLES_TO_RESTORE)
-      restorer = tf.train.Saver(variables_to_restore)
+
+      # Here we need to restore all variables, including the shadow moving average
+      # ones.
+      #   variables_to_restore = tf.get_collection(
+      #       slim.variables.VARIABLES_TO_RESTORE)
+      #   restorer = tf.train.Saver(variables_to_restore)
+      restorer = tf.train.Saver()
       restorer.restore(sess, FLAGS.pretrained_model_checkpoint_path)
 
       #step = FLAGS.pretrained_model_checkpoint_path.split('/')[-1].split('-')[-1]
