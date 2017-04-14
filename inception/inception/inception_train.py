@@ -406,15 +406,18 @@ def train(dataset):
       # assert tf.gfile.Exists(FLAGS.pretrained_model_checkpoint_path)
 
       # Here we need to restore all variables, including the shadow moving average
-      # ones.
+      # ones. Note that we remove tower-specific ones, as the true variables are
+      # the CPU shared by towers.
       #   variables_to_restore = tf.get_collection(
       #       slim.variables.VARIABLES_TO_RESTORE)
       #   restorer = tf.train.Saver(variables_to_restore)
-      restorer = tf.train.Saver()
+      variables_to_restore = tf.global_variables()
+      variables_to_restore = list(
+        filter(lambda x: x.name[:5] != 'tower', variables_to_restore))
+      restorer = tf.train.Saver(variables_to_restore)
+
       restorer.restore(sess, FLAGS.pretrained_model_checkpoint_path)
 
-      #step = FLAGS.pretrained_model_checkpoint_path.split('/')[-1].split('-')[-1]
-      #step = int(step)
       step = int(sess.run(global_step))
       print('%s: Successfully loaded model from %s at step=%d.' %
             (datetime.now(), FLAGS.pretrained_model_checkpoint_path, step))
@@ -472,7 +475,7 @@ def train(dataset):
         next_summary_time += FLAGS.save_summaries_secs
 
       # Save the model checkpoint periodically.
-      if step % 5000 == 0 or (step + 1) == FLAGS.max_steps:
+      if (step + 1) % 100 == 0 or (step + 1) == FLAGS.max_steps:
         checkpoint_path = os.path.join(FLAGS.train_dir, 'model.ckpt')
         saver.save(sess, checkpoint_path, global_step=step)
       
