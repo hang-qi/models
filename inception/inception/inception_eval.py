@@ -38,9 +38,11 @@ FLAGS = tf.app.flags.FLAGS
 
 tf.app.flags.DEFINE_string('eval_dir', '/tmp/imagenet_eval',
                            """Directory where to write event logs.""")
-tf.app.flags.DEFINE_string('checkpoint_path', '/tmp/imagenet_train/model.ckpt',
-                           """Which checkpoint file to use. checkpoint_dir will
-                           be ignored if this flag is provided.""")
+tf.app.flags.DEFINE_string('checkpoint_path', '',
+                           """Which checkpoint file to use:
+                                /path/to/model.ckpt
+                           checkpoint_dir will be ignored
+                           if this flag is provided.`""")
 tf.app.flags.DEFINE_string('checkpoint_dir', '/tmp/imagenet_train',
                            """Directory where to read model checkpoints.""")
 
@@ -71,7 +73,7 @@ def _eval_once(saver, summary_writer, top_1_op, top_5_op, summary_op, loss_op):
     summary_op: Summary op.
   """
   with tf.Session() as sess:
-    if FLAGS.checkpoint_path:
+    if len(FLAGS.checkpoint_path) > 0:
       model_checkpoint_path = FLAGS.checkpoint_path
     else:
       ckpt = tf.train.get_checkpoint_state(FLAGS.checkpoint_dir)
