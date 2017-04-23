@@ -14,12 +14,12 @@ FLAGS = tf.app.flags.FLAGS
 
 
 def main(_):
-  if FLAGS.model_name == 'cifar10':
+  if FLAGS.model_name in ['cifar10', 'allcnn']:
     dataset = Cifar10Data(subset=FLAGS.subset)
     cifar10.maybe_download_and_extract()
   else:
     dataset = ImagenetData(subset=FLAGS.subset)
-    assert dataset.data_files()
+    #assert dataset.data_files()
 
   if tf.gfile.Exists(FLAGS.train_dir):
     tf.gfile.DeleteRecursively(FLAGS.train_dir)

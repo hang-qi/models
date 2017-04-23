@@ -32,6 +32,7 @@ from inception import image_processing
 from inception import inception_model as inception
 from inception import alexnet_model as alexnet
 from inception import cifar10
+from inception import allcnn_model as allcnn
 from inception.slim import slim
 
 FLAGS = tf.app.flags.FLAGS
@@ -77,7 +78,7 @@ tf.app.flags.DEFINE_float('learning_rate_decay_factor', 0.16,
                           """Learning rate decay factor.""")
 
 tf.app.flags.DEFINE_string('model_name', 'inception',
-                           'inception (default), alexnet, cifar10.')
+                           'inception (default), alexnet, cifar10, allcnn.')
 
 tf.app.flags.DEFINE_integer('num_examples_per_task', 64,
                             'examples to to fit in each gpu.')
@@ -127,6 +128,8 @@ def _tower_loss(images, labels, num_classes, scope, reuse_variables=None):
     model = alexnet
   elif FLAGS.model_name == 'cifar10':
     model = cifar10
+  elif FLAGS.model_name == 'allcnn':
+    model = allcnn
 
   # Build inference Graph.
   with tf.variable_scope(tf.get_variable_scope(), reuse=reuse_variables):
@@ -213,6 +216,8 @@ def train(dataset):
     model = alexnet
   elif FLAGS.model_name == 'cifar10':
     model = cifar10
+  elif FLAGS.model_name == 'allcnn':
+    model = allcnn
 
   with tf.Graph().as_default(), tf.device('/cpu:0'):
     # Create a variable to count the number of train() calls. This equals the
@@ -225,15 +230,19 @@ def train(dataset):
 
     num_batches_per_epoch = (dataset.num_examples_per_epoch() /
                              FLAGS.batch_size)
-    if FLAGS.model_name == 'cifar10':
+    if FLAGS.model_name in ['cifar10', 'allcnn']:
       # Calculate the learning rate schedule.
-      decay_steps = int(num_batches_per_epoch * cifar10.NUM_EPOCHS_PER_DECAY)
+      decay_steps = int(num_batches_per_epoch * model.NUM_EPOCHS_PER_DECAY)
+
+      # Maintain same learing rate per data point.
+      #lrate = model.INITIAL_LEARNING_RATE * (FLAGS.batch_size / 128)
+      lrate = model.INITIAL_LEARNING_RATE
 
       # Decay the learning rate exponentially based on the number of steps.
-      lr = tf.train.exponential_decay(cifar10.INITIAL_LEARNING_RATE,
+      lr = tf.train.exponential_decay(lrate,
                                       global_step,
                                       decay_steps,
-                                      cifar10.LEARNING_RATE_DECAY_FACTOR,
+                                      model.LEARNING_RATE_DECAY_FACTOR,
                                       staircase=True)
       opt = tf.train.GradientDescentOptimizer(lr)
     else:
@@ -257,10 +266,11 @@ def train(dataset):
         'Batch size must be divisible by number of GPUs')
     split_batch_size = int(FLAGS.batch_size / FLAGS.num_gpus)
 
-    assert split_batch_size % FLAGS.num_examples_per_task == 0, (
-        'Batch size must be divisible by number of GPUs * batch size per gpu')
-    tasks_per_gpu = split_batch_size // FLAGS.num_examples_per_task
-    num_tasks = FLAGS.batch_size // FLAGS.num_examples_per_task
+    if split_batch_size > FLAGS.num_examples_per_task:
+      assert split_batch_size % FLAGS.num_examples_per_task == 0, (
+          'Batch size must be divisible by number of GPUs * batch size per gpu')
+    tasks_per_gpu = max(1, split_batch_size // FLAGS.num_examples_per_task)
+    num_tasks = max(1, FLAGS.batch_size // FLAGS.num_examples_per_task)
 
     # Override the number of preprocessing threads to account for the increased
     # number of GPU towers.
@@ -273,14 +283,14 @@ def train(dataset):
           num_preprocess_threads=num_preprocess_threads)
     else:
       # Use CIFAR.
-      images, labels = cifar10.distorted_inputs()
+      images, labels = model.distorted_inputs()
 
     input_summaries = copy.copy(tf.get_collection(tf.GraphKeys.SUMMARIES))
 
     # Number of classes in the Dataset label set plus 1.
     # Label 0 is reserved for an (unused) background class.
-    if FLAGS.model_name == 'cifar10':
-      num_classes = dataset.num_classes()
+    if FLAGS.model_name in ['cifar10', 'allcnn']:
+      num_classes = model.NUM_CLASSES
     else:
       num_classes = dataset.num_classes() + 1
 
@@ -337,9 +347,12 @@ def train(dataset):
         for t in range(tasks_per_gpu):
           with tf.name_scope('%s_%d_%d' % (model.TOWER_NAME, i, t)) as scope:
             with tf.control_dependencies(task_dep):
-              task_dep, summaries, batchnorm_updates = ops_one_tower(
+              task_dep, summary, batchnorm_updates = ops_one_tower(
                 i, t, reuse_variables, scope)
               reuse_variables = True
+              # Only summaries from the first tower.
+              if i == 0 and t == 0:
+                summaries = summary 
 
     # We must calculate the mean of each gradient. Note that this is the
     # synchronization point across all towers.
@@ -391,7 +404,6 @@ def train(dataset):
     # Build an initialization operation to run below.
     init = tf.global_variables_initializer()
 
-
     # Start running operations on the Graph. allow_soft_placement must be set to
     # True to build towers on GPU, as some of the ops do not have GPU
     # implementations.
@@ -411,12 +423,16 @@ def train(dataset):
       #   variables_to_restore = tf.get_collection(
       #       slim.variables.VARIABLES_TO_RESTORE)
       #   restorer = tf.train.Saver(variables_to_restore)
-      variables_to_restore = tf.global_variables()
+      global_variables = tf.global_variables()
       variables_to_restore = list(
-        filter(lambda x: x.name[:5] != 'tower', variables_to_restore))
-      restorer = tf.train.Saver(variables_to_restore)
+        filter(lambda x: x.name[:5] != 'tower', global_variables))
 
+      restorer = tf.train.Saver(variables_to_restore)
       restorer.restore(sess, FLAGS.pretrained_model_checkpoint_path)
+
+      # variables_to_init = list(
+      #   filter(lambda x: x.name[:5] == 'tower', global_variables))
+      #sess.run(tf.variables_initializer(variables_to_init))
 
       step = int(sess.run(global_step))
       print('%s: Successfully loaded model from %s at step=%d.' %
@@ -465,14 +481,14 @@ def train(dataset):
                   'w') as trace_file:
           trace_file.write(trace.generate_chrome_trace_format())
 
-      if step + 1 == FLAGS.max_steps or  next_summary_time < time.time():
-        tf.logging.info('Running Summary operation.')
-        summary_str = sess.run(summary_op)
-        summary_writer.add_summary(summary_str, step)
-        tf.logging.info('Finished running Summary operation.')
+      #if step + 1 == FLAGS.max_steps or  next_summary_time < time.time():
+      tf.logging.info('Running Summary operation.')
+      summary_str = sess.run(summary_op)
+      summary_writer.add_summary(summary_str, step)
+      tf.logging.info('Finished running Summary operation.')
 
-        # Determine the next time for running the summary.
-        next_summary_time += FLAGS.save_summaries_secs
+      # Determine the next time for running the summary.
+      # next_summary_time += FLAGS.save_summaries_secs
 
       # Save the model checkpoint periodically.
       if (step + 1) % 100 == 0 or (step + 1) == FLAGS.max_steps:

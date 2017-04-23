@@ -63,6 +63,15 @@ py_library(
 )
 
 py_library(
+    name = "allcnn",
+    srcs = ["allcnn_model.py"],
+    deps = [
+        ":cifar10_input",
+        "//inception/slim",
+    ],
+)
+
+py_library(
     name = "image_processing",
     srcs = [
         "image_processing.py",
@@ -137,6 +146,7 @@ py_library(
         ":inception",
         ":alexnet",
         ":cifar10",
+        ":allcnn",
     ],
 )
 
@@ -195,6 +205,7 @@ py_library(
         ":inception",
         ":alexnet",
         ":cifar10",
+        ":allcnn",
     ],
 )
 
@@ -207,6 +218,7 @@ py_library(
         ":image_processing",
         ":inception",
         ":alexnet",
+        ":allcnn",
     ],
 )
 

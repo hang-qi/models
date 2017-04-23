@@ -132,7 +132,7 @@ def _generate_image_and_label_batch(image, label, min_queue_examples,
   return images, tf.reshape(label_batch, [batch_size])
 
 
-def distorted_inputs(data_dir, batch_size):
+def distorted_inputs(data_dir, batch_size, image_size=IMAGE_SIZE):
   """Construct distorted input for CIFAR training using the Reader ops.
   Args:
     data_dir: Path to the CIFAR-10 data directory.
@@ -154,8 +154,8 @@ def distorted_inputs(data_dir, batch_size):
   read_input = read_cifar10(filename_queue)
   reshaped_image = tf.cast(read_input.uint8image, tf.float32)
 
-  height = IMAGE_SIZE
-  width = IMAGE_SIZE
+  height = image_size
+  width = image_size
 
   # Image processing for training the network. Note the many random
   # distortions applied to the image.
@@ -193,7 +193,7 @@ def distorted_inputs(data_dir, batch_size):
                                          shuffle=True)
 
 
-def inputs(eval_data, data_dir, batch_size):
+def inputs(eval_data, data_dir, batch_size, image_size=IMAGE_SIZE):
   """Construct input for CIFAR evaluation using the Reader ops.
   Args:
     eval_data: bool, indicating if one should use the train or eval data set.
@@ -222,8 +222,8 @@ def inputs(eval_data, data_dir, batch_size):
   read_input = read_cifar10(filename_queue)
   reshaped_image = tf.cast(read_input.uint8image, tf.float32)
 
-  height = IMAGE_SIZE
-  width = IMAGE_SIZE
+  height = image_size
+  width = image_size
 
   # Image processing for evaluation.
   # Crop the central [height, width] of the image.

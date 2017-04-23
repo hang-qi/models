@@ -31,6 +31,7 @@ from inception import image_processing
 from inception import inception_model as inception
 from inception import alexnet_model as alexnet
 from inception import cifar10
+from inception import allcnn_model as allcnn
 from inception.slim import slim
 
 
@@ -158,17 +159,20 @@ def evaluate(dataset):
     model = alexnet
   elif FLAGS.model_name == 'cifar10':
     model = cifar10
+  elif FLAGS.model_name == 'allcnn':
+    model = allcnn
 
   with tf.Graph().as_default():
     # Get images and labels from the dataset.
-    if FLAGS.model_name == 'cifar10':
-      images, labels = cifar10.inputs(eval_data=True)
+    if FLAGS.model_name in ['cifar10', 'allcnn']:
+      images, labels = model.inputs(eval_data=True)
+      num_classes = model.NUM_CLASSES
     else:
       images, labels = image_processing.inputs(dataset)
 
-    # Number of classes in the Dataset label set plus 1.
-    # Label 0 is reserved for an (unused) background class.
-    num_classes = dataset.num_classes() + 1
+      # Number of classes in the Dataset label set plus 1.
+      # Label 0 is reserved for an (unused) background class.
+      num_classes = dataset.num_classes() + 1
 
     # Build a Graph that computes the logits predictions from the
     # inference model.
