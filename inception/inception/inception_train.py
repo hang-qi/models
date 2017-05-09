@@ -231,19 +231,22 @@ def train(dataset):
     num_batches_per_epoch = (dataset.num_examples_per_epoch() /
                              FLAGS.batch_size)
     if FLAGS.model_name in ['cifar10', 'allcnn']:
+      # Let run.py to calculate the learning rate.
+      lr = FLAGS.initial_learning_rate
+
       # Calculate the learning rate schedule.
-      decay_steps = int(num_batches_per_epoch * model.NUM_EPOCHS_PER_DECAY)
+      # decay_steps = int(num_batches_per_epoch * model.NUM_EPOCHS_PER_DECAY)
 
       # Maintain same learing rate per data point.
       #lrate = model.INITIAL_LEARNING_RATE * (FLAGS.batch_size / 128)
-      lrate = model.INITIAL_LEARNING_RATE
+      # lrate = model.INITIAL_LEARNING_RATE
 
       # Decay the learning rate exponentially based on the number of steps.
-      lr = tf.train.exponential_decay(lrate,
-                                      global_step,
-                                      decay_steps,
-                                      model.LEARNING_RATE_DECAY_FACTOR,
-                                      staircase=True)
+      # lr = tf.train.exponential_decay(lrate,
+      #                                 global_step,
+      #                                 decay_steps,
+      #                                 model.LEARNING_RATE_DECAY_FACTOR,
+      #                               staircase=True)
       opt = tf.train.GradientDescentOptimizer(lr)
     else:
       # Calculate the learning rate schedule.
@@ -396,7 +399,7 @@ def train(dataset):
                         batchnorm_updates_op)
 
     # Create a saver.
-    saver = tf.train.Saver(tf.global_variables(), max_to_keep=10)
+    saver = tf.train.Saver(tf.global_variables(), max_to_keep=None)
 
     # Build the summary operation from the last tower summaries.
     summary_op = tf.summary.merge(summaries)
@@ -409,6 +412,7 @@ def train(dataset):
     # implementations.
     tf.logging.info('Starting session.')
     sess = tf.Session(config=tf.ConfigProto(
+        gpu_options=tf.GPUOptions(per_process_gpu_memory_fraction=0.60),
         allow_soft_placement=True,
         log_device_placement=FLAGS.log_device_placement))
     sess.run(init)
